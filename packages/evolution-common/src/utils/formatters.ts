@@ -34,14 +34,15 @@ export const eightDigitsAccessCodeFormatter = (input: string): string => {
  * @returns The formatted canadian postal code
  */
 export const canadianPostalCodeFormatter = (input: string): string => {
-    // Remove everything but letters and numbers
-    const strippedInput = input.replace(/[^a-zA-Z0-9]/g, '');
-    // Format with 2 blocks of 3 characters, with a space in between
-    return formatGeneral(strippedInput, {
-        blocks: [3, 3],
-        delimiter: ' ',
-        delimiterLazyShow: true,
-        numericOnly: false,
-        uppercase: true
-    });
+    // Remove everything but letters and numbers and spaces
+    input = input.replace(/[^a-zA-Z0-9\s]/g, '');
+    // Make it all uppercase
+    input = input.toUpperCase();
+    // Get only the numbers and letters. If we have 6 or if total input length more than 7, we can automatically format the access code.
+    const digitsLetters = input.replace(/[^a-zA-Z0-9]/g, '');
+    if (digitsLetters.length >= 6 || input.length === 7) {
+        return digitsLetters.slice(0, 3) + (digitsLetters.length > 3 ? ' ' + digitsLetters.slice(3, 6) : '');
+    }
+    // Prevent entering more than 7 characters (2 blocks of 3 characters with a space)
+    return input.slice(0, 7);
 };
