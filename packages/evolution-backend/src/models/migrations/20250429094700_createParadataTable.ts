@@ -10,63 +10,46 @@ const interviewsTbl = 'sv_interviews';
 const paradataTbl = 'paradata_events';
 const eventTypeEnumName = 'paradata_events_type';
 
-const getInterviewLogsStream = function (knex: Knex) {
-    const select = ['i.id', knex.raw('json_array_elements(logs) as logEntry')];
-
-    const interviewsLogEntriesQuery = knex
-        .select(...select)
-        .from(`${interviewsTbl} as i`)
-        .whereNotNull('logs');
-
-    return knex
-        .select([
-            'id',
-            knex.raw('(logEntry->>\'timestamp\')::numeric as timestamp'),
-            knex.raw('logEntry->\'valuesByPath\' as values_by_path'),
-            knex.raw('logEntry->\'unsetPaths\' as unset_paths')
-        ])
-        .from(interviewsLogEntriesQuery)
-        .orderBy(['id', 'timestamp'])
-        .stream();
-};
-
 const logsDataToParadata = async (knex: Knex) => {
-    const queryStream = getInterviewLogsStream(knex);
-    return new Promise((resolve, reject) => {
-        queryStream
-            .on('error', (error) => {
-                console.error('queryStream failed', error);
-                reject(error);
-            })
-            .on('data', (row) => {
-                queryStream.pause();
-                const { id, values_by_path, unset_paths, timestamp, server } = row;
+    // First, get all interview IDs with logs
+    const interviewIds = await knex(interviewsTbl).select('id').whereNotNull('logs');
 
-                const paradata = {
-                    interview_id: id,
-                    timestamp: knex.raw('to_timestamp(?)', timestamp),
-                    event_type: server ? 'legacy_server' : 'legacy',
-                    event_data: JSON.stringify({ valuesByPath: values_by_path, unsetPaths: unset_paths }).replaceAll(
-                        '\\u0000',
-                        ''
-                    )
-                };
+    // Process each interview separately to avoid dead lock with streams and inserts
+    for (let i = 0; i < interviewIds.length; i++) {
+        const interviewId = interviewIds[i].id;
 
-                knex(paradataTbl)
-                    .insert(paradata)
-                    .then(() => queryStream.resume())
-                    .catch((error) => reject(error));
-            })
-            .on('end', () => {
-                resolve(true);
-            });
-    });
+        // Get logs for this interview
+        const interviewLogs = await knex(interviewsTbl)
+            .select(knex.raw('json_array_elements(logs) as log_entry'))
+            .where('id', interviewId);
+
+        if (!interviewLogs || interviewLogs.length === 0) continue;
+
+        // Process logs in smaller batches to avoid excessive memory usage
+        const paradataInserts = interviewLogs.map((log) => {
+            const { timestamp, valuesByPath, unsetPaths, server } = log.log_entry;
+            return {
+                interview_id: interviewId,
+                timestamp: knex.raw('to_timestamp(?)', timestamp),
+                event_type: server ? 'legacy_server' : 'legacy',
+                event_data: JSON.stringify({
+                    valuesByPath: valuesByPath || {},
+                    unsetPaths: unsetPaths
+                }).replaceAll('\\u0000', '')
+            };
+        });
+
+        await knex(paradataTbl).insert(paradataInserts);
+    }
+
+    return true;
 };
 
 export async function up(knex: Knex): Promise<unknown> {
     if (await knex.schema.hasTable(paradataTbl)) {
         return;
     }
+
     await knex.schema.createTable(paradataTbl, (table: Knex.TableBuilder) => {
         table.integer('interview_id').notNullable();
         table.foreign('interview_id').references(`${interviewsTbl}.id`).onDelete('CASCADE');
