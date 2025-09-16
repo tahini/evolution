@@ -22,15 +22,51 @@ type ExportLogOptions = {
     interviewId?: number;
 };
 
+const mapOldLogsToNewNames = (logData: { values_by_path: { [key: string]: any }; unset_paths: string[] }) => {
+    const newValuesByPath: { [key: string]: any } = {};
+    const newUnsetPaths: string[] = [];
+
+    // Map values_by_path keys
+    Object.entries(logData.values_by_path || {}).forEach(([key, value]) => {
+        let newKey = key;
+        if (key.startsWith('responses.')) {
+            newKey = key.replace('responses.', 'response.');
+        } else if (key.startsWith('validated_data.')) {
+            newKey = key.replace('validated_data.', 'corrected_response.');
+        }
+        newValuesByPath[newKey] = value;
+    });
+
+    // Map unset_paths
+    (logData.unset_paths || []).forEach((path) => {
+        let newPath = path;
+        if (path.startsWith('responses.')) {
+            newPath = path.replace('responses.', 'response.');
+        } else if (path.startsWith('validated_data.')) {
+            newPath = path.replace('validated_data.', 'corrected_response.');
+        }
+        newUnsetPaths.push(newPath);
+    });
+
+    return {
+        values_by_path: newValuesByPath,
+        unset_paths: newUnsetPaths
+    };
+};
+
 const filterLogData = (
     logData: { values_by_path: { [key: string]: any }; unset_paths: string[] },
     participantResponseOnly: boolean
 ) => {
-    const valuesByPath = logData.values_by_path || {};
+    // Since we may be running this code on DB that were done in past surveys,
+    // migrated to the current versions, first map old log names to new ones for
+    // consistency
+    const mappedLogData = mapOldLogsToNewNames(logData);
+    const valuesByPath = mappedLogData.values_by_path || {};
     if (participantResponseOnly === false) {
         return {
             filteredValuesByPath: valuesByPath,
-            filteredUnsetPaths: logData.unset_paths
+            filteredUnsetPaths: mappedLogData.unset_paths
         };
     }
     const filteredValuesByPath = Object.keys(valuesByPath)
@@ -39,7 +75,7 @@ const filterLogData = (
             acc[key] = valuesByPath[key];
             return acc;
         }, {});
-    const filteredUnsetPaths = (logData.unset_paths || []).filter((path) => path.startsWith('response.'));
+    const filteredUnsetPaths = (mappedLogData.unset_paths || []).filter((path) => path.startsWith('response.'));
     return {
         filteredValuesByPath,
         filteredUnsetPaths
