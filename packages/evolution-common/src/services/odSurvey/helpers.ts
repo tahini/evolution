@@ -485,7 +485,15 @@ export const getCarsharingMembersCount = ({ interview }: { interview: UserInterv
  * @param {UserInterviewAttributes} options.interview The participant interview
  * @param {Person|null} [options.person=null] The person for which to get the
  * active journey.  If null, the active person will be used.
- * @returns {Journey | null} The active journey for the person, or `null` if not found.
+ * @returns {Journey | null} The active journey for the person, or `null` if not
+ * found.
+ * @deprecated This function relies on the _activeJourneyId field, which may not
+ * match the active person and calling it from a context where we want to get
+ * the journey of a person without being the active one may return `null` and
+ * give the impression that the person does not have a journey, but she does.
+ * Prefer using {@link getPersonJourney} or {@link getPersonJourneyFromPath}
+ * instead, which will return the correct journey for the person even if it's
+ * not the active one.
  */
 export const getActiveJourney = ({
     interview,
@@ -501,6 +509,82 @@ export const getActiveJourney = ({
     const journeys = getJourneys({ person: requestedPerson });
     const activeJourneyId = getResponse(interview, '_activeJourneyId', null) as string | null;
     return activeJourneyId ? journeys[activeJourneyId] || null : null;
+};
+
+/**
+ * Get the journey for a person. If a journey ID is provided, the journey with
+ * this ID will be returned if it belongs to the person, otherwise `null` will
+ * be returned. If no journey ID is provided and there is only one journey for
+ * this person, this journey will be returned directly. If there are multiple
+ * journeys and no ID is provided, an error will be thrown since it's ambiguous
+ * which journey should be returned.
+ *
+ * @param {Object} options - The options object.
+ * @param {Person} options.person The person for which to get the active
+ * journey.
+ * @param {string} [options.journeyId] The ID of the journey to return. If not
+ * provided, the function will try to return the only journey for this person, or
+ * throw an error if there are multiple journeys.
+ * @returns {Journey | null} The journey for the person, or `null` if not found.
+ */
+export const getPersonJourney = ({
+    person,
+    journeyId
+}: {
+    person: Person;
+    journeyId?: string;
+}): Journey | null => {
+    // Return the journey by ID if provided and it belongs to the person
+    const journeys = getJourneys({ person });
+    if (journeyId) {
+        return journeys[journeyId] || null;
+    }
+    // Otherwise, if there is only one journey, return it directly
+    const journeysArray = Object.values(journeys);
+    if (journeysArray.length === 1) {
+        return journeysArray[0];
+    }
+    if (journeysArray.length > 1) {
+        throw new Error('Misusing the `getPersonJourney` function for a person with multiple journeys, without specifying a journey ID.');
+    }
+    return null;
+};
+
+/**
+ * Get the person and journey from a path string if it matches the pattern
+ * `household.persons.{personId}.journeys.{journeyId}.`, otherwise return null.
+ * The person and journey IDs are extracted from the path and the corresponding
+ * person and journey objects are returned if they exist in the interview
+ * response.
+ *
+ * @param {Object} options - The options object.
+ * @param {UserInterviewAttributes} options.interview - The interview object.
+ * @param {string} [options.path] - Path string to extract the person and
+ * journey IDs from.
+ * @returns {{ person: Person, journey: Journey } | null} The current person and
+ * journey, or null if not found.
+ */
+export const getPersonJourneyFromPath = ({
+    interview,
+    path
+}: {
+    interview: UserInterviewAttributes;
+    path: string;
+}): { person: Person, journey: Journey } | null => {
+    // 1. Try to extract personId from path if it matches household.persons.{personId}.
+    const match = path.match(/household\.persons\.([^.]+)\.journeys\.([^.]+)\./);
+    if (match) {
+        const personId = match[1];
+        const journeyId = match[2];
+        const person = getPerson({ interview, personId });
+        if (person) {
+            const journey = getPersonJourney({ person, journeyId });
+            if (person && journey) {
+                return { person, journey };
+            }
+        }
+    }
+    return null;
 };
 
 /**

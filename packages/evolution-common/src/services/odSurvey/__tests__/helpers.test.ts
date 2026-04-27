@@ -1401,6 +1401,52 @@ describe('getJourneys', () => {
                   : null;
         expect(Helpers.getActiveJourney({ interview, person })).toEqual(expected);
     });
+
+    each([
+        {
+            title: 'With a defined journey ID',
+            personId: 'personId1',
+            journeyId: 'journeyId1',
+            expected: interviewAttributesForTestCases.response!.household!.persons!.personId1.journeys!.journeyId1
+        },
+        {
+            title: 'With a journey ID that does not belong to the person',
+            personId: 'personId1',
+            journeyId: 'journeyId2',
+            expected: null
+        },
+        {
+            title: 'undefined journey ID, with single journey',
+            personId: 'personId1',
+            journeyId: undefined,
+            expected: interviewAttributesForTestCases.response!.household!.persons!.personId1.journeys!.journeyId1
+        },
+    ]).test('getPersonJourney: $title', ({ setup, personId, journeyId, expected }) => {
+        const interview = _cloneDeep(interviewAttributesForTestCases);
+        if (setup) {
+            setup(interview);
+        }
+        interview.response = response;
+        const person = interview.response?.household?.persons?.[personId];
+        expect(person).toBeDefined();
+        expect(Helpers.getPersonJourney({ person: person as Person, journeyId })).toEqual(expected);
+    });
+
+    test('getPersonJourney: undefined journey ID, with multiple journeys', () => {
+        const interview = _cloneDeep(interviewAttributesForTestCases);
+        interview.response.household!.persons!.personId1.journeys = {
+            journeyId1: {
+                _uuid: 'journeyId1',
+                _sequence: 2
+            },
+            journeyId2: {
+                _uuid: 'journeyId2',
+                _sequence: 1
+            }
+        };
+        const person = interview.response?.household?.persons?.['personId1'];
+        expect(person).toBeDefined();
+        expect(() => Helpers.getPersonJourney({ person: person as Person, journeyId: undefined })).toThrow('Misusing the `getPersonJourney` function for a person with multiple journeys, without specifying a journey ID.');
 });
 
 describe('shouldShowTripsAndPlacesSections', () => {
