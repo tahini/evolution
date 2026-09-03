@@ -172,21 +172,28 @@ export const initializeTestPage = async (
     page.on('response', async (response) => {
         try {
             // Listen to the response of the `survey/updateInterview` endpoint
-            if (!response.url().includes('survey/updateInterview')) {
-                return;
+            if (response.url().includes('survey/updateInterview')) {
+                const text = await response.text();
+                if (!text) {
+                    return;
+                }
+                const parsed = JSON.parse(text);
+                // The server response may contain an `updatedValuesByPath` property
+                // which contains the updated values
+                const valuesByPath = parsed && parsed['updatedValuesByPath'];
+                if (valuesByPath !== undefined && Object.keys(valuesByPath).length > 0) {
+                    // Detect the survey objects in the updated values by path
+                    surveyObjectDetector.detectSurveyObjects(valuesByPath);
+                }
+            } else if (response.url().includes('survey/activeInterview')) {
+                const text = await response.text();
+                if (!text) {
+                    return;
+                }
+                const parsed = JSON.parse(text);
+                surveyObjectDetector.getSurveyObjectsFromInterview(parsed.interview ?? {});
             }
-            const text = await response.text();
-            if (!text) {
-                return;
-            }
-            const parsed = JSON.parse(text);
-            // The server response may contain an `updatedValuesByPath` property
-            // which contains the updated values
-            const valuesByPath = parsed && parsed['updatedValuesByPath'];
-            if (valuesByPath !== undefined && Object.keys(valuesByPath).length > 0) {
-                // Detect the survey objects in the updated values by path
-                surveyObjectDetector.detectSurveyObjects(valuesByPath);
-            }
+
         } catch (error) {
             console.error(`Error while parsing survey/updateInterview response: ${error}`);
         }

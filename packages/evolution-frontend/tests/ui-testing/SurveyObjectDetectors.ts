@@ -332,4 +332,14 @@ export class SurveyObjectDetector {
         this.detectActiveObject(data, activeVehicleKeyRegex, (activeId) => (this.activeVehicleId = activeId));
         this.detectTripDiary(data);
     }
+
+    public getSurveyObjectsFromInterview(interview: any) {
+        const response = interview.response;
+        if (typeof response._activePersonId === 'string') {
+            this.activePersonId = response._activePersonId
+        }
+        if (typeof response._activeJourneyId === 'string') {
+            this.activeJourneyId = response._activeJourneyId
+        }
+    }
 }
