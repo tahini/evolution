@@ -14,6 +14,7 @@ import yargs from 'yargs/yargs';
 import { hideBin } from 'yargs/helpers';
 import { registerTranslationDir } from 'chaire-lib-backend/lib/config/i18next';
 import express, { Express } from 'express';
+import { configureProject } from '../../tasks/serverWorkerPool';
 import { setupServerApp } from './serverApp';
 
 const argv = yargs(hideBin(process.argv)).argv as { ssl?: boolean; port?: string };
@@ -47,7 +48,14 @@ if (!(config as any).adminAuth) {
 config.auth = (config as any).adminAuth;
 delete (config as any).adminAuth;
 
-export const setupServer = (serverSetupFct?: (app: Express) => void) => {
+export const setupServer = (
+    serverSetupFct?: (app: Express) => void,
+    projectConfigModule?: string
+) => {
+    if (projectConfigModule !== undefined) {
+        configureProject(projectConfigModule);
+    }
+
     const app = express();
     setupServerApp(app, serverSetupFct);
     if (!useSSL) {
